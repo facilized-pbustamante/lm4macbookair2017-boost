@@ -14,6 +14,24 @@ fi
 echo "▶ Verificando contraseña sudo..."
 sudo -v || exit 1
 
+# ===== 0. WIFI BROADCOM (MacBook BCM4360) =====
+echo
+echo "═══════════════════════════════════════════"
+echo " 0. Driver WiFi Broadcom (MacBook)"
+echo "═══════════════════════════════════════════"
+if lspci -k 2>/dev/null | grep -qi broadcom; then
+  if lsmod | grep -q "^wl"; then
+    echo "   ✅ WiFi Broadcom (wl) ya activo"
+  else
+    echo "   ⏩ Instalando driver wl (REQUIERE cable/tethering la 1ra vez)..."
+    sudo apt install -y bcmwl-kernel-source broadcom-sta-dkms
+    sudo modprobe wl 2>/dev/null || true
+    echo "   ✅ WiFi Broadcom instalado"
+  fi
+else
+  echo "   ⏩ Sin hardware Broadcom, saltando"
+fi
+
 # ===== 1. SYSCTL =====
 echo
 echo "═══════════════════════════════════════════"

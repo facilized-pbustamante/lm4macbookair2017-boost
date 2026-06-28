@@ -2,6 +2,15 @@
 
 Optimizaciones de rendimiento para **Linux Mint** corriendo en un **MacBook Air 2017** (Intel Core i5-5350U, 8 GB DDR3, NVMe SSD).
 
+> ⚠️ **WiFi en MacBook (importante):** el script instala el driver Broadcom (`bcmwl-kernel-source`),
+> pero la BCM4360 **no funciona en una instalación limpia hasta instalarlo** → la primera vez
+> necesitas **cable Ethernet o tethering USB** para que `apt` pueda descargar todo.
+>
+> 🔁 **Qué reproduce este script:** la **capa de rendimiento/sistema** (kernel, servicios,
+> governor, ventilador, autostart, sin bloqueo de pantalla, aceleración Firefox). **NO** clona
+> el escritorio personal (temas, rofi, atajos de teclado, betterlockscreen, gestos, lanzadores,
+> perfil de Firefox/extensiones, ollama). Eso es configuración aparte.
+
 ---
 
 ## 📊 Resultados
