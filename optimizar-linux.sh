@@ -242,6 +242,147 @@ StartupNotify=false
 BDESK
 echo "   ✅ Scripts creados"
 
+# ===== 14. FIREFOX VA-API + WEBRENDER =====
+echo
+echo "═══════════════════════════════════════════"
+echo "14. Firefox: aceleración de video por GPU"
+echo "═══════════════════════════════════════════"
+FF_PROFILE=$(ls -d ~/.mozilla/firefox/*.default-release 2>/dev/null | head -1)
+if [ -n "$FF_PROFILE" ]; then
+  cat > "$FF_PROFILE/user.js" << 'FFEOF'
+// --- Aceleracion de video/GPU (Intel HD 6000) ---
+user_pref("media.ffmpeg.vaapi.enabled", true);
+user_pref("media.hardware-video-decoding.force-enabled", true);
+user_pref("media.rdd-ffmpeg.enabled", true);
+user_pref("gfx.webrender.all", true);
+user_pref("layers.acceleration.force-enabled", true);
+user_pref("browser.sessionstore.interval", 60000);
+FFEOF
+  echo "   ✅ user.js (VA-API + WebRender) — recuerda instalar extensión h264ify"
+else
+  echo "   ⏩ Firefox no detectado"
+fi
+
+# ===== 15. EARLYOOM (anti-congelamiento) =====
+echo
+echo "═══════════════════════════════════════════"
+echo "15. earlyoom (evita freezes por falta de RAM)"
+echo "═══════════════════════════════════════════"
+if systemctl is-active earlyoom &>/dev/null; then
+  echo "   ✅ earlyoom ya activo"
+else
+  sudo apt install -y earlyoom
+  sudo systemctl enable --now earlyoom
+  echo "   ✅ earlyoom instalado y activo"
+fi
+
+# ===== 16. GPU FBC + GRUB TIMEOUT =====
+echo
+echo "═══════════════════════════════════════════"
+echo "16. GPU framebuffer compression + boot rápido"
+echo "═══════════════════════════════════════════"
+if ! grep -q "i915.enable_fbc=1" /etc/default/grub; then
+  sudo sed -i 's/mitigations=off/mitigations=off i915.enable_fbc=1/' /etc/default/grub
+fi
+sudo sed -i 's/^GRUB_TIMEOUT=5/GRUB_TIMEOUT=1/' /etc/default/grub
+sudo update-grub
+echo "   ✅ i915.enable_fbc=1 + GRUB_TIMEOUT=1 (requiere reinicio)"
+
+# ===== 17. SERVICIOS INÚTILES (hardware ausente) =====
+echo
+echo "═══════════════════════════════════════════"
+echo "17. Desactivar servicios sin hardware/uso"
+echo "═══════════════════════════════════════════"
+sudo systemctl disable --now blueman-mechanism.service 2>/dev/null || true
+sudo systemctl disable fwupd-refresh.timer 2>/dev/null || true
+for s in ModemManager motd-news.timer motd-news.service \
+         avahi-daemon.service avahi-daemon.socket; do
+  sudo systemctl disable --now "$s" 2>/dev/null || true
+  sudo systemctl mask "$s" 2>/dev/null || true
+done
+echo "   ✅ ModemManager, motd-news, avahi, blueman-mechanism, fwupd-refresh OFF"
+
+# ===== 18. AUTOSTART INÚTIL + NUNCA BLOQUEAR PANTALLA =====
+echo
+echo "═══════════════════════════════════════════"
+echo "18. Autostart inútil + pantalla sin bloqueo"
+echo "═══════════════════════════════════════════"
+mkdir -p ~/.config/autostart
+# desactivar autostart globales que no aplican (override per-usuario)
+for app in nvidia-prime orca-autostart onboard-autostart at-spi-dbus-bus \
+           geoclue-demo-agent org.gnome.Evolution-alarm-notify \
+           org.gnome.SettingsDaemon.DiskUtilityNotify print-applet \
+           mintwelcome xscreensaver warpinator-autostart mintupdate \
+           light-locker betterlockscreen; do
+  src="/etc/xdg/autostart/$app.desktop"
+  [ -f "$src" ] && cp "$src" ~/.config/autostart/"$app.desktop"
+  f=~/.config/autostart/"$app.desktop"
+  [ -f "$f" ] || { echo -e "[Desktop Entry]\nType=Application\nExec=/bin/false" > "$f"; }
+  grep -q "^Hidden=" "$f" && sed -i 's/^Hidden=.*/Hidden=true/' "$f" || echo "Hidden=true" >> "$f"
+done
+# pantalla: nunca bloquear (persistente)
+xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/lock-screen-suspend-hibernate -s false 2>/dev/null || true
+xfconf-query -c xfce4-screensaver -p /lock/enabled -s false 2>/dev/null || true
+xfconf-query -c xfce4-session -p /shutdown/LockScreen -s false 2>/dev/null || true
+pkill -x light-locker 2>/dev/null || true
+xset s off 2>/dev/null || true
+echo "   ✅ Autostart limpio + pantalla nunca se bloquea"
+
+# ===== 19. MÁXIMO RENDIMIENTO PERSISTENTE (CPU/GPU/PCIe/Fan) =====
+echo
+echo "═══════════════════════════════════════════"
+echo "19. Servicio de máximo rendimiento (sin ahorro de energía)"
+echo "═══════════════════════════════════════════"
+sudo tee /usr/local/bin/max-performance.sh > /dev/null << 'MAXEOF'
+#!/bin/bash
+# === MÁXIMO RENDIMIENTO — sin ahorro de energía (CPU/GPU/PCIe/Fan) ===
+# CPU: performance + frecuencia minima = maxima (nunca baja, igual en bateria)
+for cf in /sys/devices/system/cpu/cpu[0-9]*/cpufreq; do
+  echo performance > "$cf/scaling_governor" 2>/dev/null || true
+  [ -r "$cf/cpuinfo_max_freq" ] && cat "$cf/cpuinfo_max_freq" > "$cf/scaling_min_freq" 2>/dev/null || true
+done
+echo 0 > /sys/devices/system/cpu/intel_pstate/no_turbo 2>/dev/null || true
+# RAPL al maximo
+for d in /sys/class/powercap/intel-rapl:0 /sys/class/powercap/intel-rapl:0:*; do
+  [ -d "$d" ] && echo 1 > "$d/enabled" 2>/dev/null || true
+done
+# GPU Intel: frecuencia minima = maxima
+for card in /sys/class/drm/card*; do
+  if [ -r "$card/gt_RP0_freq_mhz" ]; then
+    RP0=$(cat "$card/gt_RP0_freq_mhz" 2>/dev/null)
+    [ -n "$RP0" ] && echo "$RP0" > "$card/gt_min_freq_mhz" 2>/dev/null || true
+    [ -n "$RP0" ] && echo "$RP0" > "$card/gt_boost_freq_mhz" 2>/dev/null || true
+  fi
+done
+# PCIe sin ahorro
+echo performance > /sys/module/pcie_aspm/parameters/policy 2>/dev/null || true
+# Ventilador MacBook (Apple SMC) al maximo
+SMC=/sys/devices/platform/applesmc.768
+if [ -d "$SMC" ]; then
+  FMAX=$(cat "$SMC/fan1_max" 2>/dev/null)
+  echo 1 > "$SMC/fan1_manual" 2>/dev/null || true
+  [ -n "$FMAX" ] && echo "$FMAX" > "$SMC/fan1_output" 2>/dev/null || true
+  [ -n "$FMAX" ] && echo "$FMAX" > "$SMC/fan1_min" 2>/dev/null || true
+fi
+MAXEOF
+sudo chmod +x /usr/local/bin/max-performance.sh
+sudo tee /etc/systemd/system/max-performance.service > /dev/null << 'SVCEOF'
+[Unit]
+Description=CPU al maximo + ventilador al maximo (sin ahorro de energia)
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/max-performance.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now max-performance.service
+echo "   ✅ CPU/GPU/PCIe/ventilador fijados al máximo (persistente, igual en batería)"
+
 # ===== RESUMEN =====
 echo
 echo "╔══════════════════════════════════════════╗"

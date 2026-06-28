@@ -122,5 +122,49 @@ chmod +x optimizar-linux.sh
 | **RAM** | 8 GB DDR3 1600 MHz |
 | **Disco** | NVMe SSD 916 GB |
 | **GPU** | Intel HD Graphics 6000 |
-| **SO** | Linux Mint (XFCE) |
+| **SO** | Linux Mint 22.3 (XFCE) |
 | **Kernel** | 6.14.0-37-generic |
+
+---
+
+## 🆕 v2 — Optimizaciones adicionales
+
+Tras una auditoría completa se añadieron estas mejoras (secciones 14-19 del script):
+
+### 14. Firefox — aceleración de video por GPU
+`user.js` con VA-API + WebRender → descarga el decodificado H264 a la GPU y libera el CPU.
+La HD 6000 **no** acelera VP9/AV1, así que YouTube necesita la extensión **h264ify** para
+forzar H264 y aprovecharlo de verdad.
+
+### 15. earlyoom
+Mata el proceso que agota la RAM antes de que el equipo se congele (con 2 núcleos importa).
+
+### 16. GPU Framebuffer Compression + boot rápido
+`i915.enable_fbc=1` (la iGPU comparte el bus de RAM → menos tráfico, desktop más fluido) y
+`GRUB_TIMEOUT 5→1` (−4 s por arranque).
+
+### 17. Servicios sin hardware/uso (desactivados + enmascarados)
+`ModemManager` (sin módem WWAN), `motd-news` (telemetría Canonical), `avahi-daemon`
+(sin impresoras ni Warpinator), `blueman-mechanism` (BT on-demand), `fwupd-refresh.timer`.
+
+### 18. Autostart inútil + pantalla nunca se bloquea
+Desactivados vía override per-usuario (`Hidden=true`): `nvidia-prime` (sin NVIDIA), `orca`,
+`onboard`, `at-spi-dbus-bus`, `geoclue-demo`, `evolution-alarm`, `gnome-disk-notify`,
+`print-applet`, `mintwelcome`, `xscreensaver`, `warpinator`, `mintupdate`.
+Bloqueo de pantalla **desactivado por completo**: `light-locker`/`betterlockscreen` off +
+claves xfconf (`lock-screen-suspend-hibernate`, `screensaver/lock`, `session/LockScreen`) en `false`.
+
+### 19. Máximo rendimiento permanente (CPU/GPU/PCIe/ventilador)
+Servicio `max-performance.service` que en cada arranque fija, **igual en batería que enchufado**:
+- **CPU**: governor `performance` + `scaling_min_freq = max` (nunca baja de 2.9 GHz) + turbo ON
+- **GPU**: `gt_min_freq = gt_max` (siempre a 1000 MHz)
+- **PCIe**: ASPM en `performance` (sin ahorro en el bus)
+- **Ventilador** (Apple SMC): manual al máximo (~6500 RPM)
+- **RAPL**: límites de potencia muy por encima del TDP del chip → no throttle por batería
+
+> **Limitadores eliminados:** mitigaciones CPU, governor de ahorro, downclock en reposo,
+> TLP/laptop-mode/power-profiles-daemon, RAPL. **Único que queda:** `thermald` (seguridad
+> térmica, solo actúa ~105 °C; con el ventilador a tope no se dispara — **no quitar**).
+>
+> **Sin drivers custom:** GPU usa `i915` + Mesa 25.x (el stack óptimo; no hay propietario más
+> rápido para Intel). El techo restante es físico: 2 núcleos, 2.9 GHz, 15 W.
