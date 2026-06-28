@@ -1,0 +1,4 @@
+#!/bin/bash
+printf '123456\n' | sudo -S systemctl start blueman-mechanism.service 2>/dev/null
+/usr/lib/blueman/blueman-applet &
+echo "Bluetooth activado"

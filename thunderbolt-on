@@ -1,0 +1,9 @@
+#!/bin/bash
+printf '123456\n' | sudo -S systemctl unmask bolt.service 2>/dev/null
+printf '123456\n' | sudo -S systemctl start bolt.service 2>/dev/null
+if systemctl is-active bolt.service &>/dev/null; then
+  echo "Thunderbolt activado"
+else
+  echo "Error al activar Thunderbolt"
+  exit 1
+fi
