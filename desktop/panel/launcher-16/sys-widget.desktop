@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Centro de Control Apple
+Comment=Ver estadísticas de sistema y atajos rápidos
+Exec=/home/koe/.local/bin/sys_widget_toggle
+Icon=/home/koe/.local/share/icons/apple-lightgray.svg
+Terminal=false
+StartupNotify=false

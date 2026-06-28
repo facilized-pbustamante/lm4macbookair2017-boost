@@ -32,6 +32,26 @@ else
   echo "   ⏩ Sin hardware Broadcom, saltando"
 fi
 
+# ===== 0b. KERNEL FIJO (el WiFi Broadcom falla en otros) =====
+echo
+echo "═══════════════════════════════════════════"
+echo " 0b. Fijar kernel 6.14.0-37 (estable con WiFi)"
+echo "═══════════════════════════════════════════"
+KVER="6.14.0-37-generic"
+if uname -r | grep -q "$KVER" && dpkg -l "linux-image-$KVER" 2>/dev/null | grep -q "^ii"; then
+  echo "   ✅ Kernel $KVER ya instalado"
+else
+  echo "   ⏩ Instalando kernel $KVER (si sigue en los repos)..."
+  sudo apt install -y "linux-image-$KVER" "linux-headers-$KVER" \
+                      "linux-modules-$KVER" "linux-modules-extra-$KVER" \
+    || echo "   ⚠️  Versión no disponible en repos; usar los .deb del release si hace falta"
+fi
+# Bloquear actualizaciones de kernel (evita romper el driver wl)
+sudo apt-mark hold "linux-image-$KVER" "linux-headers-$KVER" \
+                   "linux-modules-$KVER" "linux-modules-extra-$KVER" \
+                   linux-generic-6.14 linux-image-generic-6.14 linux-headers-generic-6.14 2>/dev/null
+echo "   ✅ Kernel bloqueado (apt-mark hold) — no se actualizará solo"
+
 # ===== 1. SYSCTL =====
 echo
 echo "═══════════════════════════════════════════"
@@ -400,6 +420,128 @@ SVCEOF
 sudo systemctl daemon-reload
 sudo systemctl enable --now max-performance.service
 echo "   ✅ CPU/GPU/PCIe/ventilador fijados al máximo (persistente, igual en batería)"
+
+# ===== 20. EXPERIENCIA MAC: TRACKPAD + TECLADO + ATAJOS =====
+echo
+echo "═══════════════════════════════════════════"
+echo "20. Experiencia Mac (trackpad, teclado, atajos)"
+echo "═══════════════════════════════════════════"
+# dependencias
+sudo apt install -y libinput-gestures xbindkeys xdotool xcape \
+                    xfce4-screenshooter
+# grupo input (necesario para libinput-gestures)
+sudo gpasswd -a "$USER" input 2>/dev/null || true
+
+# --- Trackpad: tap, click con dedos, scroll natural (estilo Mac) ---
+sudo tee /etc/X11/xorg.conf.d/40-touchpad.conf > /dev/null << 'TPEOF'
+Section "InputClass"
+    Identifier "bcm5974 touchpad"
+    MatchIsTouchpad "on"
+    Driver "libinput"
+    Option "Tapping" "on"
+    Option "TappingButtonMap" "lrm"
+    Option "ClickMethod" "clickfinger"
+    Option "NaturalScrolling" "true"
+EndSection
+TPEOF
+
+# --- Gestos del trackpad (pinch zoom / 5 dedos = F4) ---
+cat > ~/.config/libinput-gestures.conf << 'GESTEOF'
+device bcm5974
+gesture pinch out 2 xdotool key ctrl+plus
+gesture pinch in 2 xdotool key ctrl+minus
+gesture pinch in 5 xdotool key F4
+gesture pinch out 5 xdotool key F4
+GESTEOF
+
+# --- Teclado Mac: layout latam, Cmd->Ctrl, acentos, xcape ---
+cat > ~/.config/mac-keyboard.sh << 'KBEOF'
+#!/bin/bash
+# Layout base correcto para teclado Mac latino
+setxkbmap -layout latam -variant nodeadkeys -option "terminate:ctrl_alt_bksp,lv3:lalt_switch"
+# Dead keys solo en teclas de acento
+xmodmap -e "keycode 34 = dead_grave asciicircum dead_grave asciicircum bracketleft degree bracketleft"
+xmodmap -e "keycode 48 = dead_acute diaeresis dead_acute diaeresis braceleft braceleft braceleft"
+# Cmd (Super_L) actúa como Ctrl
+xmodmap -e "remove mod4 = Super_L"
+xmodmap -e "keycode 133 = Control_L NoSymbol Control_L"
+xmodmap -e "add control = Control_L"
+# F20 para xcape (Control_L sola = abrir/cerrar widget)
+xmodmap -e "keycode 253 = F20"
+killall xcape 2>/dev/null
+xcape -e 'Control_L=F20'
+KBEOF
+chmod +x ~/.config/mac-keyboard.sh
+
+# --- Atajos (xbindkeys): screenshots estilo Mac + tiling 6 zonas ---
+cat > ~/.xbindkeysrc << 'XBEOF'
+"xfce4-screenshooter -f -s $HOME/Desktop"
+  control+shift + 3
+"xfce4-screenshooter -r -s $HOME/Desktop"
+  control+shift + 4
+"xfce4-screenshooter -f -c"
+  control+shift + c:14
+"xfce4-screenshooter -r -c"
+  control+shift + c:15
+XBEOF
+
+# --- Autostart de los 3 (teclado, gestos, atajos) ---
+mkdir -p ~/.config/autostart
+cat > ~/.config/autostart/mac-keyboard.desktop << KBDESK
+[Desktop Entry]
+Type=Application
+Name=Mac Keyboard Setup
+Exec=/bin/bash $HOME/.config/mac-keyboard.sh
+X-GNOME-Autostart-enabled=true
+KBDESK
+cat > ~/.config/autostart/libinput-gestures.desktop << 'GDESK'
+[Desktop Entry]
+Type=Application
+Name=Libinput Gestures
+Exec=/usr/bin/libinput-gestures
+X-GNOME-Autostart-enabled=true
+GDESK
+cat > ~/.config/autostart/xbindkeys.desktop << 'XDESK'
+[Desktop Entry]
+Type=Application
+Name=xbindkeys
+Exec=/usr/bin/xbindkeys
+X-GNOME-Autostart-enabled=true
+XDESK
+echo "   ✅ Trackpad + teclado Mac + atajos configurados (re-loguear para aplicar todo)"
+
+# ===== 21. (OPCIONAL) BARRA DE TAREAS + FONDO IDÉNTICOS =====
+echo
+echo "═══════════════════════════════════════════"
+echo "21. (Opcional) Barra de tareas + fondo de escritorio"
+echo "═══════════════════════════════════════════"
+read -rp "   ¿Instalar la barra de tareas y el fondo idénticos al original? (s/N): " RESP
+if [[ "$RESP" =~ ^[sS] ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [ -d "$SCRIPT_DIR/desktop" ]; then
+    # Fondo de escritorio
+    mkdir -p ~/"Imágenes/wallpapers"
+    cp "$SCRIPT_DIR/desktop/Sonoma.jpg" ~/"Imágenes/wallpapers/" 2>/dev/null || true
+    # Config del panel
+    mkdir -p ~/.config/xfce4/xfconf/xfce-perchannel-xml ~/.config/xfce4/panel
+    cp "$SCRIPT_DIR/desktop/xfce4-panel.xml" ~/.config/xfce4/xfconf/xfce-perchannel-xml/ 2>/dev/null || true
+    cp -r "$SCRIPT_DIR/desktop/panel/." ~/.config/xfce4/panel/ 2>/dev/null || true
+    # Reemplazar rutas /home/koe por el HOME real (portable a otro usuario)
+    find ~/.config/xfce4/panel ~/.config/xfce4/xfconf/xfce-perchannel-xml \
+         -type f -exec sed -i "s#/home/koe#$HOME#g" {} + 2>/dev/null || true
+    # Aplicar fondo en todos los monitores/espacios
+    for prop in $(xfconf-query -c xfce4-desktop -l 2>/dev/null | grep last-image); do
+      xfconf-query -c xfce4-desktop -p "$prop" -s "$HOME/Imágenes/wallpapers/Sonoma.jpg" 2>/dev/null || true
+    done
+    # Recargar panel
+    xfce4-panel -r 2>/dev/null || true
+    echo "   ✅ Barra de tareas + fondo aplicados"
+  else
+    echo "   ⚠️  Falta la carpeta 'desktop/' junto al script"
+  fi
+else
+  echo "   ⏩ Omitido (solo optimizaciones de sistema)"
+fi
 
 # ===== RESUMEN =====
 echo

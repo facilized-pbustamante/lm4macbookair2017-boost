@@ -177,3 +177,23 @@ Servicio `max-performance.service` que en cada arranque fija, **igual en baterí
 >
 > **Sin drivers custom:** GPU usa `i915` + Mesa 25.x (el stack óptimo; no hay propietario más
 > rápido para Intel). El techo restante es físico: 2 núcleos, 2.9 GHz, 15 W.
+
+### 0. WiFi Broadcom + 0b. Kernel fijo
+- Instala el driver `wl` (`bcmwl-kernel-source`) para la BCM4360.
+- **Fija e instala el kernel `6.14.0-37-generic` y lo bloquea** (`apt-mark hold`), porque el
+  driver WiFi Broadcom **no funciona bien en otros kernels**. Evita que `apt` lo actualice solo.
+  > Si esa versión ya no está en los repos de Ubuntu, hay que usar los `.deb` del release.
+
+### 20. Experiencia Mac (trackpad + teclado + atajos)
+- **Trackpad**: tap-to-click, click con dedos (`clickfinger`), scroll natural + gestos
+  (pinch zoom, 5 dedos = F4) vía `libinput-gestures`.
+- **Teclado**: layout `latam`, **Cmd → Ctrl**, acentos correctos, y `xcape` (Ctrl solo = F20).
+- **Atajos** (`xbindkeys`): screenshots estilo Mac — Cmd+Shift+3/4 (a archivo en Desktop) y a portapapeles.
+
+### 21. (Opcional) Barra de tareas + fondo de escritorio
+Sección **interactiva** (pregunta s/N): copia desde `desktop/` el panel XFCE (`xfce4-panel.xml`
++ launchers) y el wallpaper (macOS Sonoma), ajustando rutas al usuario actual. Deja el escritorio
+**idéntico** al original. Si respondes "N", solo se aplican las optimizaciones de sistema.
+
+> Estructura del repo: el script usa la carpeta `desktop/` (panel + wallpaper) que debe ir
+> **junto al script** al copiarlo a otro Mac.
