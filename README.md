@@ -165,11 +165,11 @@ claves xfconf (`lock-screen-suspend-hibernate`, `screensaver/lock`, `session/Loc
 
 ### 19. Máximo rendimiento permanente (CPU/GPU/PCIe/ventilador)
 Servicio `max-performance.service` que en cada arranque fija, **igual en batería que enchufado**:
-- **CPU**: governor `performance` + `scaling_min_freq = max` (nunca baja de 2.9 GHz) + turbo ON
+- **CPU**: governor `performance` + `scaling_min_freq = max` + turbo ON (2.7 GHz sostenido en los 2 núcleos; 2.9 GHz en 1 núcleo)
 - **GPU**: `gt_min_freq = gt_max` (siempre a 1000 MHz)
 - **PCIe**: ASPM en `performance` (sin ahorro en el bus)
 - **Ventilador** (Apple SMC): manual al máximo (~6500 RPM)
-- **RAPL**: límites de potencia muy por encima del TDP del chip → no throttle por batería
+- **RAPL**: power-capping de Linux **desactivado** (`enabled=0`) + `PKG_POWER_LIMIT` alto y **BD PROCHOT off** por MSR. ⚠️ En este MacBook, *activar* el capping (aunque sea a 100 W) clava la CPU a ~500 MHz / 5 W; por eso se deshabilita. Las protecciones reales por sobretemperatura (Tjmax 105 °C) siguen activas.
 
 > **Limitadores eliminados:** mitigaciones CPU, governor de ahorro, downclock en reposo,
 > TLP/laptop-mode/power-profiles-daemon, RAPL. **Único que queda:** `thermald` (seguridad

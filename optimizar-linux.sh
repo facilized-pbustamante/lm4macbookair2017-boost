@@ -371,6 +371,8 @@ echo
 echo "═══════════════════════════════════════════"
 echo "19. Servicio de máximo rendimiento (sin ahorro de energía)"
 echo "═══════════════════════════════════════════"
+# msr-tools: necesario para subir el limite de potencia y desactivar BD PROCHOT
+sudo apt install -y msr-tools 2>/dev/null || true
 sudo tee /usr/local/bin/max-performance.sh > /dev/null << 'MAXEOF'
 #!/bin/bash
 # === MÁXIMO RENDIMIENTO — sin ahorro de energía (CPU/GPU/PCIe/Fan) ===
@@ -380,10 +382,22 @@ for cf in /sys/devices/system/cpu/cpu[0-9]*/cpufreq; do
   [ -r "$cf/cpuinfo_max_freq" ] && cat "$cf/cpuinfo_max_freq" > "$cf/scaling_min_freq" 2>/dev/null || true
 done
 echo 0 > /sys/devices/system/cpu/intel_pstate/no_turbo 2>/dev/null || true
-# RAPL al maximo
+# RAPL: DESACTIVAR el power-capping de Linux.
+# OJO: en este MacBook Air, ACTIVAR el capping (enabled=1) clava la CPU a ~500MHz/5W
+# aunque el limite sea 100W. Por eso aqui se DESHABILITA el enforcement.
+# Las protecciones reales por sobretemperatura (Tjmax/PROCHOT del EC) siguen activas.
 for d in /sys/class/powercap/intel-rapl:0 /sys/class/powercap/intel-rapl:0:*; do
-  [ -d "$d" ] && echo 1 > "$d/enabled" 2>/dev/null || true
+  [ -d "$d" ] && echo 0 > "$d/enabled" 2>/dev/null || true
 done
+# MSR: subir limite de potencia del paquete y desactivar BD PROCHOT (señal del SMC)
+if command -v rdmsr >/dev/null 2>&1 && command -v wrmsr >/dev/null 2>&1; then
+  modprobe msr 2>/dev/null || true
+  for c in $(seq 0 $(($(nproc) - 1))); do
+    wrmsr -p "$c" 0x610 0x00dd8320 2>/dev/null || true
+    v=$(rdmsr -p "$c" 0x1FC 2>/dev/null) || continue
+    wrmsr -p "$c" 0x1FC "$(printf '0x%x' $((0x$v & ~1)))" 2>/dev/null || true
+  done
+fi
 # GPU Intel: frecuencia minima = maxima
 for card in /sys/class/drm/card*; do
   if [ -r "$card/gt_RP0_freq_mhz" ]; then
