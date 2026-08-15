@@ -376,12 +376,24 @@ sudo apt install -y msr-tools 2>/dev/null || true
 sudo tee /usr/local/bin/max-performance.sh > /dev/null << 'MAXEOF'
 #!/bin/bash
 # === MÁXIMO RENDIMIENTO — sin ahorro de energía (CPU/GPU/PCIe/Fan) ===
+# Uso: max-performance.sh [--no-fan]
+NO_FAN=0
+[ "$1" = "--no-fan" ] && NO_FAN=1
+# intel_pstate en modo ACTIVO: el driver reescribe el P-state continuamente.
+# En modo passive (intel_cpufreq) el gobernador 'performance' escribe PERF_CTL una
+# sola vez, asi que cualquier bajada puntual (thermald, RAPL, un perfil eco previo)
+# se queda clavada para siempre (sintoma: 1.7GHz fijos bajo carga).
+if [ -w /sys/devices/system/cpu/intel_pstate/status ]; then
+  echo active > /sys/devices/system/cpu/intel_pstate/status 2>/dev/null || true
+fi
 # CPU: performance + frecuencia minima = maxima (nunca baja, igual en bateria)
 for cf in /sys/devices/system/cpu/cpu[0-9]*/cpufreq; do
   echo performance > "$cf/scaling_governor" 2>/dev/null || true
   [ -r "$cf/cpuinfo_max_freq" ] && cat "$cf/cpuinfo_max_freq" > "$cf/scaling_min_freq" 2>/dev/null || true
 done
 echo 0 > /sys/devices/system/cpu/intel_pstate/no_turbo 2>/dev/null || true
+echo 100 > /sys/devices/system/cpu/intel_pstate/max_perf_pct 2>/dev/null || true
+echo 100 > /sys/devices/system/cpu/intel_pstate/min_perf_pct 2>/dev/null || true
 # RAPL: DESACTIVAR el power-capping de Linux.
 # OJO: en este MacBook Air, ACTIVAR el capping (enabled=1) clava la CPU a ~500MHz/5W
 # aunque el limite sea 100W. Por eso aqui se DESHABILITA el enforcement.
@@ -389,20 +401,31 @@ echo 0 > /sys/devices/system/cpu/intel_pstate/no_turbo 2>/dev/null || true
 for d in /sys/class/powercap/intel-rapl:0 /sys/class/powercap/intel-rapl:0:*; do
   [ -d "$d" ] && echo 0 > "$d/enabled" 2>/dev/null || true
 done
-# MSR: subir limite de potencia del paquete y desactivar BD PROCHOT (señal del SMC)
+# MSR: solo red de seguridad de PERF_CTL. Limites de potencia = los de fabrica.
 if command -v rdmsr >/dev/null 2>&1 && command -v wrmsr >/dev/null 2>&1; then
   modprobe msr 2>/dev/null || true
-  for c in $(seq 0 $(($(nproc) - 1))); do
-    wrmsr -p "$c" 0x610 0x00dd8320 2>/dev/null || true
-    v=$(rdmsr -p "$c" 0x1FC 2>/dev/null) || continue
-    wrmsr -p "$c" 0x1FC "$(printf '0x%x' $((0x$v & ~1)))" 2>/dev/null || true
-  done
+  # NO tocar PKG_POWER_LIMIT (0x610) ni BD PROCHOT (0x1FC).
+  # Subir PL1/PL2 a 100W/125W deja al paquete sin limite de potencia en un equipo
+  # de 15W con bateria gastada: freezes duros de toda la maquina, sin panic ni log
+  # (pstore vacio), en picos CPU+GPU (abrir el navegador, reproducir video).
+  # Red de seguridad: si el driver quedo en modo passive nadie corrige PERF_CTL
+  if [ "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver 2>/dev/null)" = "intel_cpufreq" ]; then
+    KHZ=$(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq 2>/dev/null)
+    if [ -n "$KHZ" ]; then
+      RATIO=$((KHZ / 100000))
+      for c in $(seq 0 $(($(nproc) - 1))); do
+        wrmsr -p "$c" 0x199 "$(printf '0x%x' $((RATIO << 8)))" 2>/dev/null || true
+      done
+    fi
+  fi
 fi
-# GPU Intel: frecuencia minima = maxima
+# GPU Intel: techo al maximo, SIN clavar el piso (gt_min = gt_max la deja sin margen)
 for card in /sys/class/drm/card*; do
   if [ -r "$card/gt_RP0_freq_mhz" ]; then
     RP0=$(cat "$card/gt_RP0_freq_mhz" 2>/dev/null)
-    [ -n "$RP0" ] && echo "$RP0" > "$card/gt_min_freq_mhz" 2>/dev/null || true
+    RPn=$(cat "$card/gt_RPn_freq_mhz" 2>/dev/null)
+    [ -n "$RPn" ] && echo "$RPn" > "$card/gt_min_freq_mhz" 2>/dev/null || true
+    [ -n "$RP0" ] && echo "$RP0" > "$card/gt_max_freq_mhz" 2>/dev/null || true
     [ -n "$RP0" ] && echo "$RP0" > "$card/gt_boost_freq_mhz" 2>/dev/null || true
   fi
 done
@@ -410,12 +433,14 @@ done
 echo performance > /sys/module/pcie_aspm/parameters/policy 2>/dev/null || true
 # Ventilador MacBook (Apple SMC) al maximo
 SMC=/sys/devices/platform/applesmc.768
-if [ -d "$SMC" ]; then
+if [ "$NO_FAN" = "0" ] && [ -d "$SMC" ]; then
   FMAX=$(cat "$SMC/fan1_max" 2>/dev/null)
   echo 1 > "$SMC/fan1_manual" 2>/dev/null || true
   [ -n "$FMAX" ] && echo "$FMAX" > "$SMC/fan1_output" 2>/dev/null || true
   [ -n "$FMAX" ] && echo "$FMAX" > "$SMC/fan1_min" 2>/dev/null || true
 fi
+# Marcador de perfil activo (lo lee sys_widget para pintar el boton)
+echo performance > /run/power-profile 2>/dev/null || true
 MAXEOF
 sudo chmod +x /usr/local/bin/max-performance.sh
 sudo tee /etc/systemd/system/max-performance.service > /dev/null << 'SVCEOF'
