@@ -210,3 +210,6 @@ El escritorio que este script deja armado usa dos proyectos aparte:
   apunta a su binario `sys_widget_toggle`.
 - **[mac-notch](https://github.com/facilized-pbustamante/mac-notch)** — el notch estilo
   MacBook del borde superior: notificaciones, reproductor, OSD de brillo y volumen.
+- **[mac-panel](https://github.com/facilized-pbustamante/mac-panel)** — la barra de
+  XFCE estilo menu bar de macOS, que es la versión viva de lo que copia el paso
+  opcional de escritorio (`desktop/xfce4-panel.xml` + `desktop/panel/`).
