@@ -197,3 +197,16 @@ Sección **interactiva** (pregunta s/N): copia desde `desktop/` el panel XFCE (`
 
 > Estructura del repo: el script usa la carpeta `desktop/` (panel + wallpaper) que debe ir
 > **junto al script** al copiarlo a otro Mac.
+
+---
+
+## 🔗 Repos relacionados
+
+El escritorio que este script deja armado usa dos proyectos aparte:
+
+- **[sys-widget](https://github.com/facilized-pbustamante/sys-widget)** — el Control
+  Center de GTK que monitorea la máquina y aplica el perfil de energía y el modo de
+  ventilador. El lanzador del panel (`desktop/panel/launcher-16/sys-widget.desktop`)
+  apunta a su binario `sys_widget_toggle`.
+- **[mac-notch](https://github.com/facilized-pbustamante/mac-notch)** — el notch estilo
+  MacBook del borde superior: notificaciones, reproductor, OSD de brillo y volumen.
